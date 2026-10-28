@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timestamp Clicker</title>
+<style>
+  :root {
+    --bg: #eef1f4; --panel: #ffffff; --ink: #1d2733; --muted: #6a7683;
+    --line: #d5dbe1; --accent: #0f6b5c; --accent-ink: #ffffff; --stop: #b3402f;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12171c; --panel: #1b222a; --ink: #e8edf2; --muted: #8f9ba7;
+      --line: #2d3742; --accent: #3fb59f; --accent-ink: #0b1512; --stop: #e0715f;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; justify-content: center; padding: 24px 16px;
+  }
+  main { width: 100%; max-width: 560px; display: grid; gap: 16px; }
+  h1 { font-size: 1.1rem; margin: 0; font-weight: 600; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .clock {
+    font: 600 3rem/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    text-align: center; margin: 8px 0 16px; font-variant-numeric: tabular-nums;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-weight: 600; border-radius: 8px; padding: 12px 16px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer;
+  }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  #start { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); flex: 1; }
+  #start.running { background: var(--stop); border-color: var(--stop); color: #fff; }
+  #mark { width: 100%; padding: 36px 16px; font-size: 1.4rem; margin-top: 10px; border-width: 2px; }
+  #mark:not(:disabled):active { transform: scale(.98); }
+  label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=number], input[type=text] {
+    font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  .offset { display: flex; gap: 10px; align-items: end; }
+  .offset > div { flex: 1; }
+  ol { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow-y: auto; }
+  li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  li:last-child { border-bottom: 0; }
+  li .n { color: var(--muted); width: 2.5em; text-align: right; font-variant-numeric: tabular-nums; }
+  li .t { font: 600 1rem ui-monospace, Menlo, Consolas, monospace; flex: 1; }
+  li .d { color: var(--muted); font-size: .85rem; }
+  li button { padding: 4px 10px; font-weight: 500; }
+  .empty { color: var(--muted); text-align: center; padding: 16px 0; }
+  .hint { color: var(--muted); font-size: .85rem; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Timestamp clicker</h1>
+
+  <section class="panel">
+    <div class="clock" id="clock" aria-live="off">00:00:00.000</div>
+    <div class="offset">
+      <div>
+        <label for="offset">Start offset (seconds, can be negative)</label>
+        <input type="number" id="offset" value="0" step="0.1">
+      </div>
+      <button id="start">Start</button>
+    </div>
+    <button id="mark" disabled>Mark timestamp</button>
+    <p class="hint">Keyboard: press Space or Enter to mark while running.</p>
+  </section>
+
+  <section class="panel">
+    <div class="row" style="justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <strong id="count">0 timestamps</strong>
+      <div class="row">
+        <button id="undo" disabled>Undo last</button>
+        <button id="clear" disabled>Clear</button>
+        <button id="export" disabled>Export JSON</button>
+      </div>
+    </div>
+    <ol id="list"><li class="empty">Start the clock, then mark moments as they happen.</li></ol>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const clock = $("clock"), startBtn = $("start"), markBtn = $("mark"),
+        offsetInput = $("offset"), list = $("list"), count = $("count"),
+        undoBtn = $("undo"), clearBtn = $("clear"), exportBtn = $("export");
+
+  let running = false, t0 = 0, offsetMs = 0, startedAtISO = null, raf = null;
+  let marks = []; // { index, seconds, ms, wallClock }
+
+  const pad = (n, w = 2) => String(n).padStart(w, "0");
+  function fmt(ms) {
+    const sign = ms < 0 ? "-" : "";
+    ms = Math.abs(Math.round(ms));
+    const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60,
+          s = Math.floor(ms / 1000) % 60, x = ms % 1000;
+    return `${sign}${pad(h)}:${pad(m)}:${pad(s)}.${pad(x, 3)}`;
+  }
+  const elapsed = () => performance.now() - t0 + offsetMs;
+
+  function tick() {
+    clock.textContent = fmt(elapsed());
+    raf = requestAnimationFrame(tick);
+  }
+
+  function start() {
+    offsetMs = (parseFloat(offsetInput.value) || 0) * 1000;
+    t0 = performance.now();
+    startedAtISO = new Date().toISOString();
+    running = true;
+    startBtn.textContent = "Stop";
+    startBtn.classList.add("running");
+    markBtn.disabled = false;
+    offsetInput.disabled = true;
+    markBtn.focus();
+    tick();
+  }
+
+  function stop() {
+    running = false;
+    cancelAnimationFrame(raf);
+    clock.textContent = fmt(elapsed());
+    startBtn.textContent = "Start";
+    startBtn.classList.remove("running");
+    markBtn.disabled = true;
+    offsetInput.disabled = false;
+  }
+
+  function mark() {
+    if (!running) return;
+    const ms = Math.round(elapsed());
+    marks.push({
+      index: marks.length + 1,
+      time: fmt(ms),
+      seconds: ms / 1000,
+      wallClock: new Date().toISOString()
+    });
+    render();
+  }
+
+  function render() {
+    count.textContent = `${marks.length} timestamp${marks.length === 1 ? "" : "s"}`;
+    undoBtn.disabled = clearBtn.disabled = exportBtn.disabled = marks.length === 0;
+    list.innerHTML = "";
+    if (!marks.length) {
+      list.innerHTML = '<li class="empty">Start the clock, then mark moments as they happen.</li>';
+      return;
+    }
+    marks.forEach((m, i) => {
+      const li = document.createElement("li");
+      const prev = i ? m.seconds - marks[i - 1].seconds : null;
+      li.innerHTML = `<span class="n">${m.index}</span><span class="t">${m.time}</span>` +
+        `<span class="d">${prev === null ? "" : "+" + prev.toFixed(3) + "s"}</span>`;
+      const del = document.createElement("button");
+      del.textContent = "Delete";
+      del.setAttribute("aria-label", `Delete timestamp ${m.index}`);
+      del.onclick = () => {
+        marks.splice(i, 1);
+        marks.forEach((x, j) => x.index = j + 1);
+        render();
+      };
+      li.appendChild(del);
+      list.appendChild(li);
+    });
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function exportJSON() {
+    const data = {
+      exportedAt: new Date().toISOString(),
+      sessionStartedAt: startedAtISO,
+      offsetSeconds: offsetMs / 1000,
+      count: marks.length,
+      timestamps: marks
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `timestamps-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  startBtn.onclick = () => (running ? stop() : start());
+  markBtn.onclick = mark;
+  undoBtn.onclick = () => { marks.pop(); render(); };
+  clearBtn.onclick = () => { if (confirm("Delete all timestamps?")) { marks = []; render(); } };
+  exportBtn.onclick = exportJSON;
+
+  offsetInput.addEventListener("input", () => {
+    if (!running) clock.textContent = fmt((parseFloat(offsetInput.value) || 0) * 1000);
+  });
+
+  document.addEventListener("keydown", e => {
+    if (running && (e.code === "Space") && document.activeElement !== markBtn &&
+        !["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) {
+      e.preventDefault();
+      mark();
+    }
+  });
+})();
+</script>
+</body>
+</html>
