@@ -237,6 +237,18 @@
 (() => {
   const $ = id => document.getElementById(id);
   
+  // FFmpeg global access
+  let FFmpeg;
+  
+  // Try to get FFmpeg from window
+  if (typeof window.FFmpeg !== 'undefined') {
+    FFmpeg = window.FFmpeg;
+  } else if (typeof FFmpeg !== 'undefined') {
+    // Already available
+  } else {
+    // Will be set when library loads
+  }
+  
   // Elements
   const videoUpload = $("video-upload");
   const videoUploadArea = $("video-upload-area");
@@ -609,6 +621,24 @@
       videoStatus.textContent = "Loading FFmpeg...";
       videoStatus.className = "status";
       
+      // Wait for FFmpeg library to be available
+      if (typeof FFmpeg === 'undefined') {
+        // Try to get it from window
+        if (typeof window !== 'undefined' && typeof window.FFmpeg !== 'undefined') {
+          FFmpeg = window.FFmpeg;
+        } else {
+          // Wait a bit and retry
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          if (typeof FFmpeg === 'undefined' && typeof window !== 'undefined') {
+            FFmpeg = window.FFmpeg;
+          }
+        }
+      }
+      
+      if (typeof FFmpeg === 'undefined' || !FFmpeg.createFFmpeg) {
+        throw new Error('FFmpeg library not loaded. Please check your internet connection and reload the page.');
+      }
+      
       const { createFFmpeg, fetchFile } = FFmpeg;
       ffmpegInstance = createFFmpeg({
         log: true,
@@ -627,8 +657,13 @@
       console.log("FFmpeg loaded:", ffmpegInstance);
     } catch (e) {
       console.error("Error loading FFmpeg:", e);
-      videoStatus.textContent = "Failed to load FFmpeg: " + e.message;
+      videoStatus.textContent = "Failed to load FFmpeg: " + (e.message || String(e));
       videoStatus.className = "status error";
+      
+      // Show a helpful message
+      setTimeout(() => {
+        videoStatus.textContent = "Please refresh the page to retry loading FFmpeg.";
+      }, 3000);
     }
   }
   
