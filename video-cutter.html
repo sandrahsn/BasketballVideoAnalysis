@@ -3,30 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Video Cutter</title>
+<title>Basketball Video Clipper</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #eef1f4; --panel: #ffffff; --ink: #1d2733; --muted: #6a7683;
-    --line: #d5dbe1; --accent: #0f6b5c; --accent-ink: #ffffff; --stop: #b3402f;
-    --success: #2ecc71; --warning: #f39c12; --error: #e74c3c;
-    color-scheme: light;
+    --bg: #1a1a1a;
+    --panel: #2a2a2a;
+    --ink: #e0e0e0;
+    --muted: #888888;
+    --line: #444444;
+    --accent: #ff6b35;
+    --accent-ink: #ffffff;
+    --stop: #e04b4b;
+    --success: #4caf50;
+    --warning: #ff9800;
+    --error: #f44336;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #12171c; --panel: #1b222a; --ink: #e8edf2; --muted: #8f9ba7;
-      --line: #2d3742; --accent: #3fb59f; --accent-ink: #0b1512; --stop: #e0715f;
-      --success: #27ae60; --warning: #d35400; --error: #c0392b;
-      color-scheme: dark;
-    }
-  }
+  
   * { box-sizing: border-box; }
   body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-    display: flex; justify-content: center; padding: 24px 16px;
+    margin: 0; 
+    background: var(--bg); 
+    color: var(--ink);
+    font-family: 'Rajdhani', sans-serif;
+    display: flex; 
+    justify-content: center; 
+    padding: 24px 16px;
   }
   main { width: 100%; max-width: 800px; display: grid; gap: 16px; }
-  h1 { font-size: 1.2rem; margin: 0; font-weight: 600; }
+  h1 {
+    font-size: 2rem; 
+    margin: 0; 
+    font-weight: 700;
+    font-family: 'Bebas Neue', cursive;
+    letter-spacing: 2px;
+    color: var(--accent);
+    text-align: center;
+  }
   h2 { font-size: 1rem; margin: 16px 0 8px; font-weight: 600; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
@@ -57,7 +70,7 @@
     text-align: center; cursor: pointer; transition: all 0.2s;
   }
   .upload-area:hover { border-color: var(--accent); }
-  .upload-area.drag-over { border-color: var(--accent); background: rgba(15, 107, 92, 0.05); }
+  .upload-area.drag-over { border-color: var(--accent); background: rgba(255, 107, 53, 0.08); }
   .upload-icon { font-size: 2rem; margin-bottom: 8px; color: var(--muted); }
   .upload-text { color: var(--muted); font-size: .9rem; }
   
@@ -134,8 +147,8 @@
 </head>
 <body>
 <main>
-  <h1>Video Cutter</h1>
-  <p style="color: var(--muted); font-size: .9rem;">Upload a video and timestamp JSON to create clips from 20s before to 10s after each timestamp.</p>
+  <h1>Basketball Video Clipper</h1>
+  <p style="color: var(--muted); font-size: .95rem; text-align: center;">Upload a video and create clips from your timestamps</p>
 
   <!-- Video Upload Section -->
   <section class="panel">
@@ -169,11 +182,29 @@
     <div class="hint">Video will be processed in the browser. Larger files may take longer.</div>
   </section>
 
-  <!-- Timestamp JSON Upload Section -->
+  <!-- Timestamp Input Section -->
   <section class="panel">
-    <h2>2. Upload Timestamp JSON</h2>
-    <div class="row" style="justify-content: space-between;">
-      <label for="json-upload">Timestamp JSON file (exported from clicker)</label>
+    <h2>2. Add Timestamps</h2>
+    <p style="color: var(--muted); font-size: .85rem; margin-bottom: 12px;">Add timestamps manually or import from a JSON file</p>
+    
+    <!-- Manual Timestamp Input -->
+    <div id="manual-timestamps-section">
+      <div class="row" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <label for="new-timestamp">Add Timestamp Manually</label>
+        <button id="add-timestamp-btn" class="primary" disabled>Add Timestamp</button>
+      </div>
+      <div class="row" style="gap: 10px;">
+        <input type="text" id="new-timestamp" placeholder="e.g., 00:05:30 or 330" style="flex: 1;" disabled>
+        <button id="add-current-btn" class="success" disabled>Add Current Time</button>
+      </div>
+      <div id="manual-status" class="status" style="margin-top: 6px;"></div>
+    </div>
+    
+    <hr style="border: none; border-top: 1px solid var(--line); margin: 16px 0;">
+    
+    <!-- JSON Import -->
+    <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
+      <label for="json-upload">Or Import JSON File</label>
       <span id="json-status" class="status"></span>
     </div>
     <input type="file" id="json-upload" accept=".json,application/json" style="display: none;">
@@ -264,6 +295,13 @@
   const jsonStatus = $("json-status");
   const timestampsPreview = $("timestamps-preview");
   const timestampsList = $("timestamps-list");
+  
+  // Manual timestamp elements
+  const newTimestampInput = $("new-timestamp");
+  const addTimestampBtn = $("add-timestamp-btn");
+  const addCurrentBtn = $("add-current-btn");
+  const manualStatus = $("manual-status");
+  const manualTimestampsSection = $("manual-timestamps-section");
   
   const beforeSeconds = $("before-seconds");
   const afterSeconds = $("after-seconds");
@@ -414,16 +452,58 @@
       const start = adjustedTimestamp - before;
       const end = adjustedTimestamp + after;
       
+      // Add delete button for manual timestamps
+      const deleteBtn = document.createElement("button");
+      deleteBtn.textContent = "×";
+      deleteBtn.className = "danger";
+      deleteBtn.style.cssText = "padding: 2px 8px; font-size: 1rem; min-width: auto;";
+      deleteBtn.onclick = () => {
+        timestamps.splice(timestamps.indexOf(ts), 1);
+        timestamps.forEach((t, i) => t.index = i + 1);
+        renderTimestampsPreview();
+        updateProcessButton();
+      };
+      
       item.innerHTML = `
         <span class="index">#${ts.index}</span>
         <span class="time">${ts.time}</span>
         <span class="range">→ Clip: ${formatTime(start)} to ${formatTime(end)} (${Math.round(after + before)}s)</span>
       `;
+      item.appendChild(deleteBtn);
       
       timestampsList.appendChild(item);
     });
     
     updateProcessButton();
+  }
+  
+  // Add a new timestamp manually
+  function addTimestampManually(timeStr) {
+    const seconds = parseTimeString(timeStr) || parseFloat(timeStr) || 0;
+    if (seconds <= 0) {
+      manualStatus.textContent = "Invalid time format. Use seconds (e.g., 30) or HH:MM:SS (e.g., 00:00:30)";
+      manualStatus.className = "status error";
+      return false;
+    }
+    
+    const newTs = {
+      index: timestamps.length + 1,
+      time: formatTime(seconds),
+      seconds: seconds
+    };
+    timestamps.push(newTs);
+    newTimestampInput.value = "";
+    manualStatus.textContent = `Added timestamp at ${formatTime(seconds)}`;
+    manualStatus.className = "status success";
+    renderTimestampsPreview();
+    updateProcessButton();
+    
+    setTimeout(() => {
+      manualStatus.textContent = "";
+      manualStatus.className = "status";
+    }, 2000);
+    
+    return true;
   }
   
   // Handle video upload
@@ -859,6 +939,51 @@
       tipOffTime = parseTimeString(inputTime) || parseFloat(inputTime) || 0;
       updateTipOffUI();
     }
+  });
+  
+  // Manual timestamp event listeners
+  addTimestampBtn.addEventListener('click', () => {
+    const timeStr = newTimestampInput.value.trim();
+    if (timeStr) {
+      addTimestampManually(timeStr);
+    }
+  });
+  
+  newTimestampInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      const timeStr = newTimestampInput.value.trim();
+      if (timeStr) {
+        addTimestampManually(timeStr);
+      }
+    }
+  });
+  
+  addCurrentBtn.addEventListener('click', () => {
+    if (videoPreview.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !isNaN(videoPreview.currentTime)) {
+      addTimestampManually(videoPreview.currentTime.toString());
+    } else {
+      manualStatus.textContent = "Video not ready. Please wait for the video to load.";
+      manualStatus.className = "status error";
+    }
+  });
+  
+  // Enable manual timestamp controls when video is uploaded
+  videoUpload.addEventListener('change', () => {
+    if (videoUpload.files.length > 0) {
+      newTimestampInput.disabled = false;
+      addTimestampBtn.disabled = false;
+      addCurrentBtn.disabled = false;
+    }
+  });
+  
+  // Disable manual timestamp controls when video is removed
+  removeVideoBtn.addEventListener('click', () => {
+    newTimestampInput.disabled = true;
+    addTimestampBtn.disabled = true;
+    addCurrentBtn.disabled = true;
+    newTimestampInput.value = "";
+    manualStatus.textContent = "";
+    manualStatus.className = "status";
   });
   
   // Show upload areas on page load
