@@ -144,6 +144,10 @@
   .tip-off-controls button { flex: 0 0 auto; }
   .tip-off-controls input { flex: 1; min-width: 100px; }
 </style>
+<script>
+// Start loading FFmpeg immediately
+loadFFmpegScript();
+</script>
 </head>
 <body>
 <main>
@@ -242,6 +246,17 @@
     </div>
   </section>
 
+  <!-- FFmpeg Loading Status -->
+  <div id="ffmpeg-loading-status" class="panel hidden">
+    <div class="row" style="justify-content: space-between; align-items: center;">
+      <span><strong>FFmpeg Status:</strong></span>
+      <span id="ffmpeg-global-status" class="status">Not loaded</span>
+    </div>
+    <div class="progress-bar" style="margin-top: 8px;">
+      <div class="progress-fill" id="ffmpeg-progress" style="width: 0%;"></div>
+    </div>
+  </div>
+
   <!-- Process Section -->
   <section class="panel">
     <h2>3. Process & Download</h2>
@@ -262,13 +277,34 @@
 </main>
 
 <!-- FFmpeg.js library -->
-<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js"></script>
+<script>
+// Load FFmpeg.js with fallback
+window.FFmpegLoaded = false;
+function loadFFmpegScript() {
+  return new Promise((resolve, reject) => {
+    if (window.FFmpegLoaded) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js';
+    script.onload = () => {
+      window.FFmpegLoaded = true;
+      resolve();
+    };
+    script.onerror = () => {
+      reject(new Error('Failed to load FFmpeg script'));
+    };
+    document.head.appendChild(script);
+  });
+}
+</script>
 
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   
-  // FFmpeg global access - the library sets itself as window.FFmpeg
+  // FFmpeg global access
   let FFmpeg = window.FFmpeg;
   
   // Elements
@@ -689,19 +725,30 @@
     if (ffmpegLoaded) return;
     
     try {
-      videoStatus.textContent = "Loading FFmpeg...";
+      videoStatus.textContent = "Loading FFmpeg library...";
       videoStatus.className = "status";
       
-      // Wait for FFmpeg library to be available
-      let maxWaits = 10;
+      // First, ensure the script is loaded
+      if (!window.FFmpegLoaded) {
+        videoStatus.textContent = "Loading FFmpeg script...";
+        await loadFFmpegScript();
+      }
+      
+      // Wait for FFmpeg to be available
+      let maxWaits = 20;
       while ((typeof FFmpeg === 'undefined' || !FFmpeg.createFFmpeg) && maxWaits > 0) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 250));
         maxWaits--;
         FFmpeg = window.FFmpeg;
       }
       
       if (typeof FFmpeg === 'undefined' || !FFmpeg.createFFmpeg) {
-        throw new Error('FFmpeg library not loaded. Please check your internet connection and reload the page.');
+        const ffmpegStatusEl = $("ffmpeg-global-status");
+        if (ffmpegStatusEl) {
+          ffmpegStatusEl.textContent = "Failed to load - please refresh";
+          ffmpegStatusEl.className = "status error";
+        }
+        throw new Error('FFmpeg library failed to load. Please check your internet connection and reload the page.');
       }
       
       const { createFFmpeg, fetchFile } = FFmpeg;
