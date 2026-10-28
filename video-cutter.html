@@ -145,7 +145,27 @@
   .tip-off-controls input { flex: 1; min-width: 100px; }
 </style>
 <script>
-// Start loading FFmpeg immediately
+// Load FFmpeg.js with fallback
+window.FFmpegLoaded = false;
+function loadFFmpegScript() {
+  return new Promise((resolve, reject) => {
+    if (window.FFmpegLoaded) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js';
+    script.onload = () => {
+      window.FFmpegLoaded = true;
+      resolve();
+    };
+    script.onerror = () => {
+      reject(new Error('Failed to load FFmpeg script'));
+    };
+    document.head.appendChild(script);
+  });
+}
+// Start loading immediately
 loadFFmpegScript();
 </script>
 </head>
@@ -280,24 +300,6 @@ loadFFmpegScript();
 <script>
 // Load FFmpeg.js with fallback
 window.FFmpegLoaded = false;
-function loadFFmpegScript() {
-  return new Promise((resolve, reject) => {
-    if (window.FFmpegLoaded) {
-      resolve();
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js';
-    script.onload = () => {
-      window.FFmpegLoaded = true;
-      resolve();
-    };
-    script.onerror = () => {
-      reject(new Error('Failed to load FFmpeg script'));
-    };
-    document.head.appendChild(script);
-  });
-}
 </script>
 
 <script>
