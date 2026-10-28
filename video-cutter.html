@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Cutter</title>
+<style>
+  :root {
+    --bg: #eef1f4; --panel: #ffffff; --ink: #1d2733; --muted: #6a7683;
+    --line: #d5dbe1; --accent: #0f6b5c; --accent-ink: #ffffff; --stop: #b3402f;
+    --success: #2ecc71; --warning: #f39c12; --error: #e74c3c;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12171c; --panel: #1b222a; --ink: #e8edf2; --muted: #8f9ba7;
+      --line: #2d3742; --accent: #3fb59f; --accent-ink: #0b1512; --stop: #e0715f;
+      --success: #27ae60; --warning: #d35400; --error: #c0392b;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; justify-content: center; padding: 24px 16px;
+  }
+  main { width: 100%; max-width: 800px; display: grid; gap: 16px; }
+  h1 { font-size: 1.2rem; margin: 0; font-weight: 600; }
+  h2 { font-size: 1rem; margin: 16px 0 8px; font-weight: 600; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button {
+    font: inherit; font-weight: 600; border-radius: 8px; padding: 10px 16px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--bg); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.primary:hover:not(:disabled) { background: var(--accent); opacity: 0.9; }
+  button.danger { background: var(--stop); color: #fff; border-color: var(--stop); }
+  button.success { background: var(--success); color: #fff; border-color: var(--success); }
+  
+  label { display: block; font-size: .9rem; color: var(--ink); margin-bottom: 6px; }
+  input[type=file], input[type=text], input[type=number] {
+    font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  input[type=file] { padding: 12px; }
+  .status { font-size: .9rem; color: var(--muted); margin-top: 8px; }
+  .status.error { color: var(--error); }
+  .status.success { color: var(--success); }
+  .status.warning { color: var(--warning); }
+  
+  .upload-area {
+    border: 2px dashed var(--line); border-radius: 8px; padding: 20px;
+    text-align: center; cursor: pointer; transition: all 0.2s;
+  }
+  .upload-area:hover { border-color: var(--accent); }
+  .upload-area.drag-over { border-color: var(--accent); background: rgba(15, 107, 92, 0.05); }
+  .upload-icon { font-size: 2rem; margin-bottom: 8px; color: var(--muted); }
+  .upload-text { color: var(--muted); font-size: .9rem; }
+  
+  .file-info {
+    display: flex; gap: 10px; align-items: center; padding: 10px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+    margin-top: 10px;
+  }
+  .file-info .name { flex: 1; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-info .size { color: var(--muted); font-size: .85rem; }
+  .file-info .remove { 
+    background: none; border: none; color: var(--stop); cursor: pointer;
+    padding: 4px; font-size: 1.2rem; line-height: 1;
+  }
+  
+  .timestamps-preview {
+    max-height: 300px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); padding: 10px; margin-top: 10px;
+  }
+  .timestamp-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .timestamp-item:last-child { border-bottom: none; }
+  .timestamp-item .index { color: var(--muted); width: 30px; font-variant-numeric: tabular-nums; }
+  .timestamp-item .time { font: 600 0.9rem ui-monospace, Menlo, Consolas, monospace; }
+  .timestamp-item .range { color: var(--muted); font-size: .85rem; }
+  
+  .progress-container {
+    margin-top: 16px;
+  }
+  .progress-bar {
+    height: 24px; border-radius: 12px; background: var(--line); overflow: hidden;
+    position: relative;
+  }
+  .progress-fill {
+    height: 100%; background: var(--accent); transition: width 0.3s;
+  }
+  .progress-text {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    color: var(--accent-ink); font-size: .85rem; font-weight: 600;
+  }
+  
+  .clips-list {
+    display: grid; gap: 10px; margin-top: 16px;
+  }
+  .clip-item {
+    display: flex; align-items: center; gap: 10px; padding: 12px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+  }
+  .clip-item .info { flex: 1; }
+  .clip-item .clip-time { font: 600 0.9rem ui-monospace, Menlo, Consolas, monospace; }
+  .clip-item .clip-range { color: var(--muted); font-size: .85rem; }
+  .clip-item button { flex: 0 0 auto; }
+  
+  .settings {
+    display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px;
+  }
+  .settings > div { flex: 1; min-width: 120px; }
+  
+  .hidden { display: none; }
+  
+  #video-preview {
+    width: 100%; border-radius: 8px; margin-top: 10px;
+    max-height: 300px; object-fit: contain; background: #000;
+  }
+  
+  .hint { color: var(--muted); font-size: .85rem; margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Video Cutter</h1>
+  <p style="color: var(--muted); font-size: .9rem;">Upload a video and timestamp JSON to create clips from 20s before to 10s after each timestamp.</p>
+
+  <!-- Video Upload Section -->
+  <section class="panel">
+    <h2>1. Upload Video</h2>
+    <div class="row" style="justify-content: space-between;">
+      <label for="video-upload">Video file (MP4, up to 3 hours)</label>
+      <span id="video-status" class="status"></span>
+    </div>
+    <input type="file" id="video-upload" accept="video/mp4,video/*" style="display: none;">
+    <div id="video-upload-area" class="upload-area" style="display: none;">
+      <div class="upload-icon">📹</div>
+      <div class="upload-text">Drag & drop video file here or click to browse</div>
+    </div>
+    <div id="video-file-info" class="file-info hidden">
+      <span class="name" id="video-name"></span>
+      <span class="size" id="video-size"></span>
+      <button class="remove" id="remove-video" title="Remove">×</button>
+    </div>
+    <video id="video-preview" controls class="hidden"></video>
+    <div class="hint">Video will be processed in the browser. Larger files may take longer.</div>
+  </section>
+
+  <!-- Timestamp JSON Upload Section -->
+  <section class="panel">
+    <h2>2. Upload Timestamp JSON</h2>
+    <div class="row" style="justify-content: space-between;">
+      <label for="json-upload">Timestamp JSON file (exported from clicker)</label>
+      <span id="json-status" class="status"></span>
+    </div>
+    <input type="file" id="json-upload" accept=".json,application/json" style="display: none;">
+    <div id="json-upload-area" class="upload-area" style="display: none;">
+      <div class="upload-icon">📄</div>
+      <div class="upload-text">Drag & drop JSON file here or click to browse</div>
+    </div>
+    <div id="json-file-info" class="file-info hidden">
+      <span class="name" id="json-name"></span>
+      <span class="size" id="json-size"></span>
+      <button class="remove" id="remove-json" title="Remove">×</button>
+    </div>
+    
+    <div class="settings">
+      <div>
+        <label for="before-seconds">Seconds before timestamp</label>
+        <input type="number" id="before-seconds" value="20" min="0" step="1">
+      </div>
+      <div>
+        <label for="after-seconds">Seconds after timestamp</label>
+        <input type="number" id="after-seconds" value="10" min="0" step="1">
+      </div>
+      <div>
+        <label for="clip-format">Output format</label>
+        <select id="clip-format" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink);">
+          <option value="mp4">MP4</option>
+          <option value="webm">WebM</option>
+        </select>
+      </div>
+    </div>
+    
+    <div id="timestamps-preview" class="timestamps-preview hidden">
+      <strong style="color: var(--ink);">Preview:</strong>
+      <div id="timestamps-list"></div>
+    </div>
+  </section>
+
+  <!-- Process Section -->
+  <section class="panel">
+    <h2>3. Process & Download</h2>
+    <button id="process-btn" class="primary" disabled>Process Video</button>
+    <button id="download-all-btn" class="success" disabled>Download All Clips (ZIP)</button>
+    
+    <div class="progress-container hidden" id="progress-container">
+      <label>Processing clips...</label>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width: 0%;"></div>
+        <span class="progress-text" id="progress-text">0%</span>
+      </div>
+      <span id="progress-status" class="status"></span>
+    </div>
+    
+    <div class="clips-list" id="clips-list"></div>
+  </section>
+</main>
+
+<!-- FFmpeg.js library -->
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js"></script>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  
+  // Elements
+  const videoUpload = $("video-upload");
+  const videoUploadArea = $("video-upload-area");
+  const videoFileInfo = $("video-file-info");
+  const videoName = $("video-name");
+  const videoSize = $("video-size");
+  const removeVideoBtn = $("remove-video");
+  const videoPreview = $("video-preview");
+  const videoStatus = $("video-status");
+  
+  const jsonUpload = $("json-upload");
+  const jsonUploadArea = $("json-upload-area");
+  const jsonFileInfo = $("json-file-info");
+  const jsonName = $("json-name");
+  const jsonSize = $("json-size");
+  const removeJsonBtn = $("remove-json");
+  const jsonStatus = $("json-status");
+  const timestampsPreview = $("timestamps-preview");
+  const timestampsList = $("timestamps-list");
+  
+  const beforeSeconds = $("before-seconds");
+  const afterSeconds = $("after-seconds");
+  const clipFormat = $("clip-format");
+  
+  const processBtn = $("process-btn");
+  const downloadAllBtn = $("download-all-btn");
+  const progressContainer = $("progress-container");
+  const progressFill = $("progress-fill");
+  const progressText = $("progress-text");
+  const progressStatus = $("progress-status");
+  const clipsList = $("clips-list");
+  
+  // State
+  let videoFile = null;
+  let jsonFile = null;
+  let timestamps = [];
+  let ffmpegLoaded = false;
+  let ffmpegInstance = null;
+  let processing = false;
+  let clips = [];
+  
+  // Format file size
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
+  }
+  
+  // Format time in seconds to HH:MM:SS
+  function formatTime(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+  
+  // Format duration
+  function formatDuration(seconds) {
+    const absSeconds = Math.abs(seconds);
+    const h = Math.floor(absSeconds / 3600);
+    const m = Math.floor((absSeconds % 3600) / 60);
+    const s = Math.floor(absSeconds % 60);
+    const sign = seconds < 0 ? "-" : "";
+    return `${sign}${h}h ${m}m ${s}s`;
+  }
+  
+  // Parse timestamp JSON
+  function parseTimestamps(content) {
+    try {
+      const data = JSON.parse(content);
+      
+      // Handle different JSON structures
+      let timestamps = [];
+      
+      if (data.timestamps && Array.isArray(data.timestamps)) {
+        // Format from timestamp-clicker.html
+        timestamps = data.timestamps.map((ts, index) => ({
+          index: index + 1,
+          time: ts.time || formatTime(ts.seconds || 0),
+          seconds: ts.seconds || 0,
+          wallClock: ts.wallClock
+        }));
+      } else if (Array.isArray(data)) {
+        // Simple array of timestamps
+        timestamps = data.map((ts, index) => ({
+          index: index + 1,
+          time: typeof ts === 'number' ? formatTime(ts) : ts,
+          seconds: typeof ts === 'number' ? ts : parseTimeString(ts)
+        }));
+      } else if (data.count && data.timestamps) {
+        // Another possible format
+        timestamps = data.timestamps;
+      }
+      
+      return timestamps.filter(ts => ts.seconds !== undefined && !isNaN(ts.seconds));
+    } catch (e) {
+      console.error("Error parsing timestamps:", e);
+      return [];
+    }
+  }
+  
+  // Parse time string (HH:MM:SS or MM:SS)
+  function parseTimeString(timeStr) {
+    if (typeof timeStr !== 'string') return 0;
+    
+    const parts = timeStr.split(':').filter(p => p !== '');
+    if (parts.length === 0) return 0;
+    
+    let seconds = 0;
+    let multiplier = 1;
+    
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const num = parseFloat(parts[i]);
+      if (!isNaN(num)) {
+        seconds += num * multiplier;
+      }
+      multiplier *= 60;
+    }
+    
+    return seconds;
+  }
+  
+  // Update process button state
+  function updateProcessButton() {
+    const canProcess = videoFile && timestamps.length > 0;
+    processBtn.disabled = !canProcess;
+  }
+  
+  // Render timestamps preview
+  function renderTimestampsPreview() {
+    if (timestamps.length === 0) {
+      timestampsPreview.classList.add("hidden");
+      return;
+    }
+    
+    timestampsPreview.classList.remove("hidden");
+    timestampsList.innerHTML = "";
+    
+    timestamps.forEach(ts => {
+      const item = document.createElement("div");
+      item.className = "timestamp-item";
+      
+      const before = parseFloat(beforeSeconds.value) || 20;
+      const after = parseFloat(afterSeconds.value) || 10;
+      const start = ts.seconds - before;
+      const end = ts.seconds + after;
+      
+      item.innerHTML = `
+        <span class="index">#${ts.index}</span>
+        <span class="time">${ts.time}</span>
+        <span class="range">→ Clip: ${formatTime(start)} to ${formatTime(end)} (${Math.round(after + before)}s)</span>
+      `;
+      
+      timestampsList.appendChild(item);
+    });
+    
+    updateProcessButton();
+  }
+  
+  // Handle video upload
+  videoUpload.addEventListener('change', async (e) => {
+    if (e.target.files.length === 0) return;
+    
+    videoFile = e.target.files[0];
+    videoName.textContent = videoFile.name;
+    videoSize.textContent = formatSize(videoFile.size);
+    videoFileInfo.classList.remove("hidden");
+    videoUploadArea.classList.add("hidden");
+    videoStatus.textContent = "";
+    videoStatus.className = "status";
+    
+    // Show preview
+    const videoUrl = URL.createObjectURL(videoFile);
+    videoPreview.src = videoUrl;
+    videoPreview.classList.remove("hidden");
+    
+    // Load FFmpeg if not already loaded
+    if (!ffmpegLoaded) {
+      await loadFFmpeg();
+    }
+    
+    updateProcessButton();
+  });
+  
+  // Handle JSON upload
+  jsonUpload.addEventListener('change', async (e) => {
+    if (e.target.files.length === 0) return;
+    
+    jsonFile = e.target.files[0];
+    jsonName.textContent = jsonFile.name;
+    jsonSize.textContent = formatSize(jsonFile.size);
+    jsonFileInfo.classList.remove("hidden");
+    jsonUploadArea.classList.add("hidden");
+    jsonStatus.textContent = "";
+    jsonStatus.className = "status";
+    
+    try {
+      const content = await jsonFile.text();
+      timestamps = parseTimestamps(content);
+      
+      if (timestamps.length === 0) {
+        jsonStatus.textContent = "No valid timestamps found in JSON";
+        jsonStatus.className = "status error";
+      } else {
+        jsonStatus.textContent = `${timestamps.length} timestamps loaded`;
+        jsonStatus.className = "status success";
+        renderTimestampsPreview();
+      }
+    } catch (e) {
+      jsonStatus.textContent = "Error reading JSON file";
+      jsonStatus.className = "status error";
+      timestamps = [];
+    }
+  });
+  
+  // Remove video
+  removeVideoBtn.addEventListener('click', () => {
+    videoFile = null;
+    videoFileInfo.classList.add("hidden");
+    videoUploadArea.classList.remove("hidden");
+    videoPreview.classList.add("hidden");
+    videoPreview.src = "";
+    videoUpload.value = "";
+    videoStatus.textContent = "";
+    videoStatus.className = "status";
+    updateProcessButton();
+  });
+  
+  // Remove JSON
+  removeJsonBtn.addEventListener('click', () => {
+    jsonFile = null;
+    jsonFileInfo.classList.add("hidden");
+    jsonUploadArea.classList.remove("hidden");
+    jsonUpload.value = "";
+    jsonStatus.textContent = "";
+    jsonStatus.className = "status";
+    timestamps = [];
+    timestampsPreview.classList.add("hidden");
+    updateProcessButton();
+  });
+  
+  // Drag and drop for video
+  videoUploadArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    videoUploadArea.classList.add("drag-over");
+  });
+  
+  videoUploadArea.addEventListener('dragleave', () => {
+    videoUploadArea.classList.remove("drag-over");
+  });
+  
+  videoUploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    videoUploadArea.classList.remove("drag-over");
+    if (e.dataTransfer.files.length > 0) {
+      videoUpload.files = e.dataTransfer.files;
+      videoUpload.dispatchEvent(new Event('change'));
+    }
+  });
+  
+  // Click to browse for video
+  videoUploadArea.addEventListener('click', () => {
+    videoUpload.click();
+  });
+  
+  // Drag and drop for JSON
+  jsonUploadArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    jsonUploadArea.classList.add("drag-over");
+  });
+  
+  jsonUploadArea.addEventListener('dragleave', () => {
+    jsonUploadArea.classList.remove("drag-over");
+  });
+  
+  jsonUploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    jsonUploadArea.classList.remove("drag-over");
+    if (e.dataTransfer.files.length > 0) {
+      jsonUpload.files = e.dataTransfer.files;
+      jsonUpload.dispatchEvent(new Event('change'));
+    }
+  });
+  
+  // Click to browse for JSON
+  jsonUploadArea.addEventListener('click', () => {
+    jsonUpload.click();
+  });
+  
+  // Load FFmpeg
+  async function loadFFmpeg() {
+    if (ffmpegLoaded) return;
+    
+    try {
+      videoStatus.textContent = "Loading FFmpeg...";
+      videoStatus.className = "status";
+      
+      const { createFFmpeg, fetchFile } = FFmpeg;
+      ffmpegInstance = createFFmpeg({
+        log: true,
+        progress: (p) => {
+          if (p.ratio && p.ratio < 1) {
+            videoStatus.textContent = `Loading FFmpeg: ${Math.round(p.ratio * 100)}%`;
+          }
+        }
+      });
+      
+      await ffmpegInstance.load();
+      ffmpegLoaded = true;
+      videoStatus.textContent = "FFmpeg loaded successfully";
+      videoStatus.className = "status success";
+      
+      console.log("FFmpeg loaded:", ffmpegInstance);
+    } catch (e) {
+      console.error("Error loading FFmpeg:", e);
+      videoStatus.textContent = "Failed to load FFmpeg: " + e.message;
+      videoStatus.className = "status error";
+    }
+  }
+  
+  // Process video
+  async function processVideo() {
+    if (processing) return;
+    
+    processing = true;
+    clips = [];
+    clipsList.innerHTML = "";
+    
+    processBtn.disabled = true;
+    downloadAllBtn.disabled = true;
+    progressContainer.classList.remove("hidden");
+    progressFill.style.width = "0%";
+    progressText.textContent = "0%";
+    progressStatus.textContent = "Starting...";
+    progressStatus.className = "status";
+    
+    try {
+      const before = parseFloat(beforeSeconds.value) || 20;
+      const after = parseFloat(afterSeconds.value) || 10;
+      const format = clipFormat.value;
+      
+      // Write video file to FFmpeg FS
+      const videoNameInFS = "input.mp4";
+      await ffmpegInstance.FS("writeFile", videoNameInFS, await fetchFile(videoFile));
+      
+      progressStatus.textContent = `Processing ${timestamps.length} clips...`;
+      
+      // Process each timestamp
+      for (let i = 0; i < timestamps.length; i++) {
+        const ts = timestamps[i];
+        const clipStart = Math.max(0, ts.seconds - before);
+        const clipEnd = ts.seconds + after;
+        const clipDuration = clipEnd - clipStart;
+        
+        if (clipDuration <= 0) {
+          console.warn(`Skipping timestamp ${ts.index}: duration would be ${clipDuration}s`);
+          continue;
+        }
+        
+        const outputName = `clip_${String(i + 1).padStart(3, '0')}_${formatTime(ts.seconds).replace(/:/g, '-')}.${format}`;
+        
+        // Update progress
+        const progressPercent = Math.round(((i + 0.5) / timestamps.length) * 100);
+        progressFill.style.width = `${progressPercent}%`;
+        progressText.textContent = `${progressPercent}%`;
+        progressStatus.textContent = `Processing clip ${i + 1}/${timestamps.length}: ${ts.time}`;
+        
+        // Build FFmpeg command
+        let cmd = [
+          "-i", videoNameInFS,
+          "-ss", clipStart.toString(),
+          "-t", clipDuration.toString(),
+          "-c", "copy",
+          "-avoid_negative_ts", "1",
+          outputName
+        ];
+        
+        // For WebM format, use different codec
+        if (format === "webm") {
+          cmd = [
+            "-i", videoNameInFS,
+            "-ss", clipStart.toString(),
+            "-t", clipDuration.toString(),
+            "-c:v", "libvpx-vp9",
+            "-c:a", "libopus",
+            "-b:v", "1M",
+            "-crf", "30",
+            "-avoid_negative_ts", "1",
+            outputName
+          ];
+        }
+        
+        try {
+          await ffmpegInstance.run(...cmd);
+          
+          // Read the clip file
+          const clipData = await ffmpegInstance.FS("readFile", outputName);
+          const clipBlob = new Blob([clipData.buffer], { type: format === "mp4" ? "video/mp4" : "video/webm" });
+          const clipUrl = URL.createObjectURL(clipBlob);
+          
+          clips.push({
+            index: ts.index,
+            time: ts.time,
+            start: clipStart,
+            end: clipEnd,
+            duration: clipDuration,
+            blob: clipBlob,
+            url: clipUrl,
+            filename: outputName
+          });
+          
+          // Add to clips list
+          const clipItem = document.createElement("div");
+          clipItem.className = "clip-item";
+          clipItem.innerHTML = `
+            <div class="info">
+              <div class="clip-time">#${ts.index} - ${ts.time}</div>
+              <div class="clip-range">${formatTime(clipStart)} to ${formatTime(clipEnd)} (${Math.round(clipDuration)}s)</div>
+            </div>
+            <button class="download-clip" data-index="${i}">Download</button>
+          `;
+          clipsList.appendChild(clipItem);
+          
+        } catch (clipError) {
+          console.error(`Error processing clip ${i + 1}:`, clipError);
+          progressStatus.textContent = `Error processing clip ${i + 1}: ${clipError.message || String(clipError)}`;
+          progressStatus.className = "status error";
+        }
+      }
+      
+      // Clean up
+      await ffmpegInstance.FS("unlink", videoNameInFS);
+      
+      progressFill.style.width = "100%";
+      progressText.textContent = "100%";
+      progressStatus.textContent = `Done! ${clips.length} clips created.`;
+      progressStatus.className = "status success";
+      
+      if (clips.length > 0) {
+        downloadAllBtn.disabled = false;
+      }
+      
+    } catch (e) {
+      console.error("Error processing video:", e);
+      progressStatus.textContent = "Error: " + (e.message || String(e));
+      progressStatus.className = "status error";
+    } finally {
+      processing = false;
+      processBtn.disabled = false;
+      
+      // Add click handlers for download buttons
+      document.querySelectorAll(".download-clip").forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const index = parseInt(e.target.dataset.index);
+          const clip = clips[index];
+          if (clip) {
+            downloadClip(clip);
+          }
+        });
+      });
+    }
+  }
+  
+  // Download individual clip
+  function downloadClip(clip) {
+    const a = document.createElement("a");
+    a.href = clip.url;
+    a.download = clip.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  
+  // Download all clips as ZIP
+  async function downloadAllClips() {
+    if (clips.length === 0) return;
+    
+    downloadAllBtn.disabled = true;
+    downloadAllBtn.textContent = "Preparing ZIP...";
+    
+    try {
+      // Use JSZip to create a ZIP file
+      const JSZip = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+      const zip = new JSZip.default();
+      
+      clips.forEach(clip => {
+        zip.file(clip.filename, clip.blob);
+      });
+      
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const zipUrl = URL.createObjectURL(zipBlob);
+      
+      const a = document.createElement("a");
+      a.href = zipUrl;
+      a.download = `clips_${new Date().toISOString().split('T')[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      
+      setTimeout(() => URL.revokeObjectURL(zipUrl), 10000);
+      
+    } catch (e) {
+      console.error("Error creating ZIP:", e);
+      alert("Error creating ZIP: " + (e.message || String(e)));
+    } finally {
+      downloadAllBtn.disabled = false;
+      downloadAllBtn.textContent = "Download All Clips (ZIP)";
+    }
+  }
+  
+  // Event listeners
+  processBtn.addEventListener('click', processVideo);
+  downloadAllBtn.addEventListener('click', downloadAllClips);
+  
+  // Settings change handlers
+  beforeSeconds.addEventListener('change', renderTimestampsPreview);
+  afterSeconds.addEventListener('change', renderTimestampsPreview);
+  
+  // Show upload areas on page load
+  window.addEventListener('load', () => {
+    videoUploadArea.style.display = 'block';
+    jsonUploadArea.style.display = 'block';
+  });
+  
+  // Clean up on page unload
+  window.addEventListener('beforeunload', () => {
+    clips.forEach(clip => {
+      URL.revokeObjectURL(clip.url);
+    });
+  });
+})();
+</script>
+</body>
+</html>
