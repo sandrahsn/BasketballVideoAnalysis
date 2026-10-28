@@ -126,6 +126,10 @@
   }
   
   .hint { color: var(--muted); font-size: .85rem; margin-top: 8px; }
+  .tip-off-section { margin-top: 12px; padding: 12px; background: var(--bg); border-radius: 8px; border: 1px solid var(--line); }
+  .tip-off-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .tip-off-controls button { flex: 0 0 auto; }
+  .tip-off-controls input { flex: 1; min-width: 100px; }
 </style>
 </head>
 <body>
@@ -151,6 +155,17 @@
       <button class="remove" id="remove-video" title="Remove">×</button>
     </div>
     <video id="video-preview" controls class="hidden"></video>
+    
+    <div class="tip-off-section hidden" id="tip-off-section">
+      <div class="tip-off-controls">
+        <button id="set-tipoff-btn" class="primary">Set Tip-Off</button>
+        <input type="text" id="tipoff-time" placeholder="e.g., 00:00:10 or 10" style="flex: 1;" disabled>
+        <button id="clear-tipoff-btn" class="danger" disabled>Clear</button>
+      </div>
+      <div class="hint" style="margin-top: 6px;">Set the starting point of the video. All timestamps will be offset from this time.</div>
+      <div id="tipoff-status" class="status" style="margin-top: 6px;"></div>
+    </div>
+    
     <div class="hint">Video will be processed in the browser. Larger files may take longer.</div>
   </section>
 
@@ -231,6 +246,11 @@
   const removeVideoBtn = $("remove-video");
   const videoPreview = $("video-preview");
   const videoStatus = $("video-status");
+  const tipOffSection = $("tip-off-section");
+  const setTipOffBtn = $("set-tipoff-btn");
+  const tipOffTimeInput = $("tipoff-time");
+  const clearTipOffBtn = $("clear-tipoff-btn");
+  const tipOffStatus = $("tipoff-status");
   
   const jsonUpload = $("json-upload");
   const jsonUploadArea = $("json-upload-area");
@@ -262,6 +282,7 @@
   let ffmpegInstance = null;
   let processing = false;
   let clips = [];
+  let tipOffTime = 0; // Starting point offset in seconds
   
   // Format file size
   function formatSize(bytes) {
@@ -351,6 +372,24 @@
     processBtn.disabled = !canProcess;
   }
   
+  // Update tip-off UI
+  function updateTipOffUI() {
+    tipOffTimeInput.value = tipOffTime > 0 ? formatTime(tipOffTime) : "";
+    clearTipOffBtn.disabled = tipOffTime === 0;
+    setTipOffBtn.disabled = !videoFile;
+    tipOffTimeInput.disabled = tipOffTime === 0;
+    
+    if (tipOffTime > 0) {
+      tipOffStatus.textContent = `Tip-off set at ${formatTime(tipOffTime)}`;
+      tipOffStatus.className = "status success";
+    } else {
+      tipOffStatus.textContent = "";
+      tipOffStatus.className = "status";
+    }
+    
+    renderTimestampsPreview();
+  }
+  
   // Render timestamps preview
   function renderTimestampsPreview() {
     if (timestamps.length === 0) {
@@ -367,8 +406,10 @@
       
       const before = parseFloat(beforeSeconds.value) || 20;
       const after = parseFloat(afterSeconds.value) || 10;
-      const start = ts.seconds - before;
-      const end = ts.seconds + after;
+      // Apply tip-off offset: video starts at tipOffTime, so subtract it from timestamps
+      const adjustedTimestamp = ts.seconds - tipOffTime;
+      const start = adjustedTimestamp - before;
+      const end = adjustedTimestamp + after;
       
       item.innerHTML = `
         <span class="index">#${ts.index}</span>
@@ -398,6 +439,10 @@
     const videoUrl = URL.createObjectURL(videoFile);
     videoPreview.src = videoUrl;
     videoPreview.classList.remove("hidden");
+    
+    // Show tip-off section
+    tipOffSection.classList.remove("hidden");
+    updateTipOffUI();
     
     // Load FFmpeg if not already loaded
     if (!ffmpegLoaded) {
@@ -448,6 +493,12 @@
     videoUpload.value = "";
     videoStatus.textContent = "";
     videoStatus.className = "status";
+    
+    // Reset tip-off
+    tipOffTime = 0;
+    tipOffSection.classList.add("hidden");
+    updateTipOffUI();
+    
     updateProcessButton();
   });
   
@@ -512,6 +563,44 @@
     jsonUpload.click();
   });
   
+  // Tip-off controls
+  setTipOffBtn.addEventListener('click', () => {
+    if (!videoFile) return;
+    
+    // Use current video time if available, otherwise prompt
+    if (videoPreview.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !isNaN(videoPreview.currentTime)) {
+      tipOffTime = videoPreview.currentTime;
+      updateTipOffUI();
+    } else {
+      const inputTime = prompt("Enter tip-off time in seconds or HH:MM:SS format:", "");
+      if (inputTime !== null) {
+        tipOffTime = parseTimeString(inputTime) || parseFloat(inputTime) || 0;
+        updateTipOffUI();
+      }
+    }
+  });
+  
+  clearTipOffBtn.addEventListener('click', () => {
+    tipOffTime = 0;
+    updateTipOffUI();
+  });
+  
+  tipOffTimeInput.addEventListener('change', () => {
+    const inputTime = tipOffTimeInput.value.trim();
+    if (inputTime) {
+      tipOffTime = parseTimeString(inputTime) || parseFloat(inputTime) || 0;
+      updateTipOffUI();
+    }
+  });
+  
+  // Update tip-off when video preview time changes
+  videoPreview.addEventListener('timeupdate', () => {
+    // Only update if we're not currently setting tip-off
+    if (tipOffTime === 0 && videoPreview.currentTime > 0) {
+      // Optional: auto-suggest current time
+    }
+  });
+  
   // Load FFmpeg
   async function loadFFmpeg() {
     if (ffmpegLoaded) return;
@@ -573,8 +662,10 @@
       // Process each timestamp
       for (let i = 0; i < timestamps.length; i++) {
         const ts = timestamps[i];
-        const clipStart = Math.max(0, ts.seconds - before);
-        const clipEnd = ts.seconds + after;
+        // Apply tip-off offset: video starts at tipOffTime, so subtract it from timestamps
+        const adjustedTimestamp = ts.seconds - tipOffTime;
+        const clipStart = Math.max(0, adjustedTimestamp - before);
+        const clipEnd = adjustedTimestamp + after;
         const clipDuration = clipEnd - clipStart;
         
         if (clipDuration <= 0) {
@@ -626,8 +717,8 @@
           clips.push({
             index: ts.index,
             time: ts.time,
-            start: clipStart,
-            end: clipEnd,
+            start: clipStart + tipOffTime,
+            end: clipEnd + tipOffTime,
             duration: clipDuration,
             blob: clipBlob,
             url: clipUrl,
@@ -640,7 +731,7 @@
           clipItem.innerHTML = `
             <div class="info">
               <div class="clip-time">#${ts.index} - ${ts.time}</div>
-              <div class="clip-range">${formatTime(clipStart)} to ${formatTime(clipEnd)} (${Math.round(clipDuration)}s)</div>
+              <div class="clip-range">${formatTime(clipStart + tipOffTime)} to ${formatTime(clipEnd + tipOffTime)} (${Math.round(clipDuration)}s)</div>
             </div>
             <button class="download-clip" data-index="${i}">Download</button>
           `;
@@ -740,6 +831,15 @@
   // Settings change handlers
   beforeSeconds.addEventListener('change', renderTimestampsPreview);
   afterSeconds.addEventListener('change', renderTimestampsPreview);
+  
+  // Tip-off change handler
+  tipOffTimeInput.addEventListener('input', (e) => {
+    const inputTime = e.target.value.trim();
+    if (inputTime) {
+      tipOffTime = parseTimeString(inputTime) || parseFloat(inputTime) || 0;
+      updateTipOffUI();
+    }
+  });
   
   // Show upload areas on page load
   window.addEventListener('load', () => {
