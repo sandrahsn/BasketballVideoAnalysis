@@ -237,17 +237,8 @@
 (() => {
   const $ = id => document.getElementById(id);
   
-  // FFmpeg global access
-  let FFmpeg;
-  
-  // Try to get FFmpeg from window
-  if (typeof window.FFmpeg !== 'undefined') {
-    FFmpeg = window.FFmpeg;
-  } else if (typeof FFmpeg !== 'undefined') {
-    // Already available
-  } else {
-    // Will be set when library loads
-  }
+  // FFmpeg global access - the library sets itself as window.FFmpeg
+  let FFmpeg = window.FFmpeg;
   
   // Elements
   const videoUpload = $("video-upload");
@@ -622,17 +613,11 @@
       videoStatus.className = "status";
       
       // Wait for FFmpeg library to be available
-      if (typeof FFmpeg === 'undefined') {
-        // Try to get it from window
-        if (typeof window !== 'undefined' && typeof window.FFmpeg !== 'undefined') {
-          FFmpeg = window.FFmpeg;
-        } else {
-          // Wait a bit and retry
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          if (typeof FFmpeg === 'undefined' && typeof window !== 'undefined') {
-            FFmpeg = window.FFmpeg;
-          }
-        }
+      let maxWaits = 10;
+      while ((typeof FFmpeg === 'undefined' || !FFmpeg.createFFmpeg) && maxWaits > 0) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        maxWaits--;
+        FFmpeg = window.FFmpeg;
       }
       
       if (typeof FFmpeg === 'undefined' || !FFmpeg.createFFmpeg) {
