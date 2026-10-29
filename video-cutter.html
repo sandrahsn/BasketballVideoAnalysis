@@ -150,7 +150,8 @@ window.FFmpegLoaded = false;
 const FFMPEG_CDNS = [
   'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js',
   'https://unpkg.com/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/ffmpeg.js/0.12.2/ffmpeg.min.js'
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/ffmpeg.min.js',
+  'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/ffmpeg.min.js'
 ];
 
 function loadFFmpegScript() {
@@ -164,28 +165,45 @@ function loadFFmpegScript() {
     
     function tryNextCdn() {
       if (currentCdn >= FFMPEG_CDNS.length) {
+        console.error('FFmpeg: All ' + FFMPEG_CDNS.length + ' CDNs failed');
         reject(new Error('Failed to load FFmpeg from all CDNs. Please check your internet connection.'));
         return;
       }
+      console.log('FFmpeg: Trying CDN ' + (currentCdn + 1) + ': ' + FFMPEG_CDNS[currentCdn]);
       
       const script = document.createElement('script');
       script.src = FFMPEG_CDNS[currentCdn];
       script.onload = () => {
         window.FFmpegLoaded = true;
+        // Update both status elements
         const statusEl = document.getElementById('ffmpeg-global-status');
+        const videoStatus = document.getElementById('video-status');
+        const msg = 'FFmpeg loaded from CDN ' + (currentCdn + 1);
         if (statusEl) {
-          statusEl.textContent = 'FFmpeg loaded from CDN ' + (currentCdn + 1);
+          statusEl.textContent = msg;
           statusEl.className = 'status success';
         }
+        if (videoStatus) {
+          videoStatus.textContent = msg;
+          videoStatus.className = 'status success';
+        }
+        console.log(msg);
         resolve();
       };
       script.onerror = () => {
         currentCdn++;
         const statusEl = document.getElementById('ffmpeg-global-status');
+        const videoStatus = document.getElementById('video-status');
+        const msg = 'Trying CDN ' + (currentCdn + 1) + ' of ' + FFMPEG_CDNS.length + '...';
         if (statusEl) {
-          statusEl.textContent = 'Trying CDN ' + (currentCdn + 1) + ' of ' + FFMPEG_CDNS.length;
+          statusEl.textContent = msg;
           statusEl.className = 'status warning';
         }
+        if (videoStatus) {
+          videoStatus.textContent = msg;
+          videoStatus.className = 'status warning';
+        }
+        console.log(msg);
         setTimeout(tryNextCdn, 500);
       };
       document.head.appendChild(script);
@@ -198,9 +216,15 @@ function loadFFmpegScript() {
 loadFFmpegScript().catch(e => {
   console.error('FFmpeg load error:', e);
   const statusEl = document.getElementById('ffmpeg-global-status');
+  const videoStatus = document.getElementById('video-status');
+  const msg = 'FFmpeg failed to load: ' + e.message;
   if (statusEl) {
-    statusEl.textContent = 'FFmpeg failed to load: ' + e.message;
+    statusEl.textContent = msg;
     statusEl.className = 'status error';
+  }
+  if (videoStatus) {
+    videoStatus.textContent = msg;
+    videoStatus.className = 'status error';
   }
 });
 </script>
