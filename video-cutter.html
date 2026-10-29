@@ -147,26 +147,62 @@
 <script>
 // Load FFmpeg.js with fallback
 window.FFmpegLoaded = false;
+const FFMPEG_CDNS = [
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js',
+  'https://unpkg.com/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/ffmpeg.js/0.12.2/ffmpeg.min.js'
+];
+
 function loadFFmpegScript() {
   return new Promise((resolve, reject) => {
     if (window.FFmpegLoaded) {
       resolve();
       return;
     }
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js';
-    script.onload = () => {
-      window.FFmpegLoaded = true;
-      resolve();
-    };
-    script.onerror = () => {
-      reject(new Error('Failed to load FFmpeg script'));
-    };
-    document.head.appendChild(script);
+    
+    let currentCdn = 0;
+    
+    function tryNextCdn() {
+      if (currentCdn >= FFMPEG_CDNS.length) {
+        reject(new Error('Failed to load FFmpeg from all CDNs. Please check your internet connection.'));
+        return;
+      }
+      
+      const script = document.createElement('script');
+      script.src = FFMPEG_CDNS[currentCdn];
+      script.onload = () => {
+        window.FFmpegLoaded = true;
+        const statusEl = document.getElementById('ffmpeg-global-status');
+        if (statusEl) {
+          statusEl.textContent = 'FFmpeg loaded from CDN ' + (currentCdn + 1);
+          statusEl.className = 'status success';
+        }
+        resolve();
+      };
+      script.onerror = () => {
+        currentCdn++;
+        const statusEl = document.getElementById('ffmpeg-global-status');
+        if (statusEl) {
+          statusEl.textContent = 'Trying CDN ' + (currentCdn + 1) + ' of ' + FFMPEG_CDNS.length;
+          statusEl.className = 'status warning';
+        }
+        setTimeout(tryNextCdn, 500);
+      };
+      document.head.appendChild(script);
+    }
+    
+    tryNextCdn();
   });
 }
 // Start loading immediately
-loadFFmpegScript();
+loadFFmpegScript().catch(e => {
+  console.error('FFmpeg load error:', e);
+  const statusEl = document.getElementById('ffmpeg-global-status');
+  if (statusEl) {
+    statusEl.textContent = 'FFmpeg failed to load: ' + e.message;
+    statusEl.className = 'status error';
+  }
+});
 </script>
 </head>
 <body>
